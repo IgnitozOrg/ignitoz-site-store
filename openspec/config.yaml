@@ -1,32 +1,30 @@
 schema: spec-driven
 
-# Project context (optional)
-# Add only constraints that should guide OpenSpec artifacts and workflows.
-# Include constraints an agent cannot infer by reading the code.
-# Keep general project documentation and discoverable codebase facts out.
-# Example:
-#   context: |
-#     Designs and tasks must cover Windows, macOS, and Linux
-#     Write all artifacts in Spanish
+context: |
+  Project: ignitozorg.github.io
+  Language: English
+  Domain: SPA landing page for Ignitoz.
+  Stack: documented in docs/stack.md
+  Architecture: documented in docs/architecture.md
+  Deployment flow: documented in docs/deployment.md
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always state what is out of scope
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  proposal:
+    - Keep the proposal under 500 words unless the change is unusually broad.
+    - Cover only why, what changes, scope, non-goals, capabilities, and impact.
+    - Move implementation choices and file-level details to design.md.
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+  specs:
+    - Treat specs as the behavioral contract, not an implementation plan.
+    - Include only observable behavior, user outcomes, and external contracts.
+    - Exclude code structure, file paths, components, commands, and architecture decisions.
+
+  design:
+    - Keep design sections concise and decision-oriented.
+    - Include concrete files, routes, assets, dependencies, or integrations only when they clarify implementation.
+    - Do not repeat proposal motivation or spec requirements.
+
+  tasks:
+    - Write each task as one concrete deliverable.
+    - Include validation tasks for changed behavior.
+    - Avoid restating proposal, specs, or design in task text.
