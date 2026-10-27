@@ -7,28 +7,44 @@ if (!outputDir || !/^\/[\w-]+(?:\/[\w-]+)*\/$/.test(basePath ?? '')) {
   throw new Error('Usage: node scripts/fix-pages-base-path.mjs <output-dir> /repository-name/')
 }
 
-async function* htmlFiles(directory) {
+async function* outputFiles(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name)
-    if (entry.isDirectory()) yield* htmlFiles(path)
-    else if (entry.isFile() && entry.name.endsWith('.html')) yield path
+    if (entry.isDirectory()) yield* outputFiles(path)
+    else if (entry.isFile() && /\.(html|css|js)$/.test(entry.name)) yield path
   }
 }
 
 const assetPath = /(\b(?:href|src)\s*=\s*)(["'])\/(?=assets\/|logo\.svg(?:[?#]|["']))/g
 const rootBootstrap = /(window\.__OPENSPEC_BASE_PATH__\s*=\s*)(["'])\/\2/g
+const cssAssetPath = /(url\(\s*["']?)\/(?=assets\/)/g
+const jsAssetPath = /(["'`])\/(?=assets\/)/g
+// OpenSpecUI 15's transition link passes an already-prefixed href to TanStack
+// Router, which applies basepath again. Strip it before router.navigate().
+const navigationHref = /function ([$\w]+)\(e\)\{let t=new URL\(e,window\.location\.origin\);return`\$\{t\.pathname\}\$\{t\.search\}\$\{t\.hash\}`\}/g
+const vitePreloadBase = /return`\/`\+e/g
 let htmlCount = 0
 let updatedCount = 0
+let navigationCount = 0
 
-for await (const file of htmlFiles(outputDir)) {
-  htmlCount++
+for await (const file of outputFiles(outputDir)) {
   const original = await readFile(file, 'utf8')
-  const updated = original
-    .replace(assetPath, (_, attribute, quote) => `${attribute}${quote}${basePath}`)
-    .replace(rootBootstrap, (_, assignment) => `${assignment}${JSON.stringify(basePath)}`)
-
-  if (assetPath.test(updated) || rootBootstrap.test(updated)) {
-    throw new Error(`Absolute root asset path remains in ${file}`)
+  let updated = original
+  if (file.endsWith('.html')) {
+    htmlCount++
+    updated = updated
+      .replace(assetPath, (_, attribute, quote) => `${attribute}${quote}${basePath}`)
+      .replace(rootBootstrap, (_, assignment) => `${assignment}${JSON.stringify(basePath)}`)
+  } else if (file.endsWith('.css')) {
+    updated = updated.replace(cssAssetPath, (_, prefix) => `${prefix}${basePath}`)
+  } else {
+    updated = updated
+      .replace(jsAssetPath, (_, quote) => `${quote}${basePath}`)
+      .replace(vitePreloadBase, () => `return${JSON.stringify(basePath)}+e`)
+      .replace(navigationHref, (_, name) => {
+        navigationCount++
+        return `function ${name}(e){let t=new URL(e,window.location.origin),b=${JSON.stringify(basePath)},p=t.pathname;if(p===b.slice(0,-1))p="/";else if(p.startsWith(b))p=p.slice(b.length-1);return p+t.search+t.hash}`
+      })
   }
   if (updated !== original) {
     await writeFile(file, updated)
@@ -37,4 +53,7 @@ for await (const file of htmlFiles(outputDir)) {
 }
 
 if (htmlCount === 0) throw new Error(`No HTML files found in ${outputDir}`)
-console.log(`Checked ${htmlCount} HTML files; adjusted ${updatedCount} for ${basePath}`)
+if (navigationCount !== 1) {
+  throw new Error(`Expected one OpenSpecUI 15 navigation helper; found ${navigationCount}. Review the workaround before deploying.`)
+}
+console.log(`Checked ${htmlCount} HTML files; adjusted ${updatedCount} HTML/CSS/JS files for ${basePath}`)
