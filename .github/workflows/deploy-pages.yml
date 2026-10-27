@@ -39,6 +39,9 @@ jobs:
         env:
           npm_config_yes: "true"
 
+      - name: Fix and check GitHub Pages asset paths
+        run: node scripts/fix-pages-base-path.mjs dist /ignitoz-site-store/
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
