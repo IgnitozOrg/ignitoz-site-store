@@ -34,13 +34,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Export static OpenSpec UI
-        run: npm exec -- openspecui export -o dist --base-path /ignitoz-site-store/ --clean
-        env:
-          npm_config_yes: "true"
-
-      - name: Fix OpenSpecUI 15 subpath navigation and assets
-        run: node scripts/fix-pages-base-path.mjs dist /ignitoz-site-store/
+      - name: Build static OpenSpec UI
+        run: npm run build
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
