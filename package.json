@@ -16,8 +16,8 @@
   "main": "index.js",
   "scripts": {
     "start": "openspecui serve . --web",
-    "build": "npm run build:export",
-    "build:export": "openspecui export -o dist --clean",
+    "build": "npm run build:export && npm run build:paths",
+    "build:export": "openspecui export -o dist --base-path /ignitoz-site-store/ --clean",
     "build:paths": "node scripts/fix-pages-base-path.mjs dist /ignitoz-site-store/",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
