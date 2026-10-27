@@ -1,5 +1,6 @@
-import { readFile, readdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { createHash } from 'node:crypto'
+import { readFile, readdir, rename, writeFile } from 'node:fs/promises'
+import { join, relative } from 'node:path'
 
 const [outputDir, basePath] = process.argv.slice(2)
 
@@ -56,4 +57,22 @@ if (htmlCount === 0) throw new Error(`No HTML files found in ${outputDir}`)
 if (navigationCount !== 1) {
   throw new Error(`Expected one OpenSpecUI 15 navigation helper; found ${navigationCount}. Review the workaround before deploying.`)
 }
+
+// The upstream filenames describe the original content. After patching, give
+// the entire asset graph a new URL so cached chunks cannot import the old entry.
+const assetFiles = []
+for await (const file of outputFiles(join(outputDir, 'assets'))) assetFiles.push(file)
+const hash = createHash('sha256')
+for (const file of assetFiles.sort()) {
+  hash.update(relative(outputDir, file))
+  hash.update(await readFile(file))
+}
+const assetsDirectory = `assets-${hash.digest('hex').slice(0, 12)}`
+await rename(join(outputDir, 'assets'), join(outputDir, assetsDirectory))
+for await (const file of outputFiles(outputDir)) {
+  const original = await readFile(file, 'utf8')
+  const updated = original.replace(/(?<![\w-])assets\//g, `${assetsDirectory}/`)
+  if (updated !== original) await writeFile(file, updated)
+}
 console.log(`Checked ${htmlCount} HTML files; adjusted ${updatedCount} HTML/CSS/JS files for ${basePath}`)
+console.log(`Versioned patched assets: ${assetsDirectory}`)
