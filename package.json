@@ -16,13 +16,12 @@
   "main": "index.js",
   "scripts": {
     "start": "openspecui serve . --web",
-    "build": "npm run build:export && npm run build:paths",
+    "build": "openspecui export -o dist --base-path / --clean",
     "build:export": "openspecui export -o dist --base-path /ignitoz-site-store/ --clean",
     "build:paths": "node scripts/fix-pages-base-path.mjs dist /ignitoz-site-store/",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "devDependencies": {
-    "@openspecui/web": "15.0.0",
     "openspecui": "15.0.0"
   }
 }
