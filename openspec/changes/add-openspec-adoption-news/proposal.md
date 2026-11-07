@@ -2,27 +2,34 @@
 
 ## Why
 
-Ignitoz visitors need a reliable way to discover publications about organizations adopting Fission-AI's OpenSpec. The current backend does not provide news data, and the search provider's credentials must remain on the server.
+Ignitoz visitors need a simple way to discover articles about companies adopting OpenSpec and reach their original sources. They also need to understand how current the information is and retain access to available news when search is temporarily unavailable.
 
 ## What Changes
 
-- Provide a public, on-demand backend endpoint returning a shared selection of up to ten dated publications, with titles, excerpts, original links, and publication dates.
-- Search for Spanish and English content, prioritize the last 30 days, and supplement with older publications when needed; return fewer or no results when appropriate.
-- Reuse results for 24 hours per instance, share concurrent refreshes, and return the last successful result with freshness metadata if the provider fails. Report an error when no previous result exists.
-- Protect the endpoint with configurable per-IP rate limiting and allow browser access from the two Ignitoz production origins. Keep the fixed search configuration and provider credential on the server.
-- Cover observable HTTP behavior with deterministic provider simulations; validate provider date, language, and period capabilities during implementation.
-- Exclude frontend cards, user-defined searches, independent verification of adoption, persistent or cross-instance storage, scheduled refreshes, and a global provider spending cap.
+- Provide a public, shared selection of recent OpenSpec adoption articles, with summaries, publication dates, original links and source-related thumbnails when available.
+- Refine discovery toward company adoption experiences and news, excluding unwanted sources and avoiding searches performed only to fill the list.
+- Reuse available results and clearly indicate freshness, preserving earlier information during temporary failures.
+- Limit excessive use while allowing access from the confirmed Ignitoz website origins.
+- Provide consistent public errors that protect credentials and internal details.
+- Verify the behavior through automated unit and local integration tests.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `openspec-adoption-news`: Public retrieval and selection of OpenSpec adoption news, including result freshness, availability, and access controls.
+- `openspec-adoption-news`: Public discovery of company adoption articles, including publication metadata, optional thumbnails, freshness, availability and access behavior.
 
 ### Modified Capabilities
 
 None.
 
+## Out of Scope
+
+- Frontend cards and image processing or hosting.
+- Visitor-defined searches and independent verification of adoption claims.
+- Persistent or shared storage between service instances, scheduled updates and a global search-spending cap.
+- Tests against deployed services, deployment-trigger automation, live client-IP/rate-limit verification and stress tests.
+
 ## Impact
 
-The NestJS backend gains a public API, a Tavily Search integration and server-side configuration. Deployment must supply the provider credential and choose the IP limit and window; the Ignitoz production origins need browser access. Automated HTTP tests will simulate Tavily, while a separate exploratory check requires a configured credential.
+The backend news service, its public response contract, search integration, documentation and automated tests are affected. Public error consistency also applies across the API. Website consumers gain optional thumbnail information; frontend presentation remains a separate effort. Search relevance and language coverage remain dependent on the source provider.

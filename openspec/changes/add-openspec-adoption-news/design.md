@@ -2,45 +2,88 @@
 
 ## Context
 
-The NestJS application currently has a greeting endpoint, global environment configuration, and Supertest-based HTTP tests. See the proposal and `openspec-adoption-news` spec for scope and behavioral requirements. Each process is independent and has no shared cache.
+The service uses NestJS, Tavily Search, in-memory state and local HTTP tests. See the proposal and spec for its scope and behavioral contract, and the project document `docs/specs/openspec-adoption-news.md` for the agreed requirements and exploratory evidence. Implementation progress is tracked in `tasks.md`.
+
+Cloud Run is the deployment platform and the frontend calls the service directly. The current backend URL is `https://ignitoz-services-206126963043.us-central1.run.app`. Each process owns its cache and request counters.
 
 ## Goals / Non-Goals
 
-**Goals:** Isolate the external search boundary, make refresh behavior deterministic under concurrency, and expose a stable HTTP contract suitable for the future frontend.
+**Goals:** Expose a stable public contract, bound each refresh to one search plus one retry, preserve useful stale data during outages, standardize public errors, and make access behavior explicit for Cloud Run.
 
-**Non-Goals:** Introduce persistent infrastructure, coordinate instances, or verify whether search results actually prove adoption.
+**Non-Goals:** Verify adoption claims, guarantee relevant or bilingual results, add persistent/shared state, coordinate instances, impose a global spending cap, implement frontend cards, create or run Playwright tests against the deployed service, connect E2E execution to GCP deployment, or run deployment stress/multiple-IP tests.
 
 ## Decisions
 
-### HTTP boundary
+### HTTP boundary and common errors
 
-Add `GET /news/openspec-adoption` with a response shaped as `{ "items": [{ "title", "url", "excerpt", "publishedAt" }], "fetchedAt", "stale" }`; dates are ISO 8601 strings. An empty successful result uses `items: []`. Return HTTP 503 with a generic error when no successful result is available. Do not accept client controls over the search. A dedicated route keeps the contract explicit; exposing a general search endpoint would allow arbitrary provider usage.
+Keep `GET /news/openspec-adoption` with `{ "items": [{ "title", "url", "excerpt", "publishedAt", "thumbnailUrl" }], "fetchedAt", "stale" }`. Dates are ISO 8601 strings. Ignore client search and refresh controls. An empty successful selection is a valid response and is cached.
 
-### Search and selection
+Use a common JSON error contract across the API containing `statusCode` and a public `message`. Preserve meaningful HTTP status codes, including 429 for the visitor limit. When news cannot be obtained and no previous successful result exists, return 503 with a generic service-unavailable message. The public response must not disclose whether the cause is provider downtime, exhausted quota or another internal failure. Unexpected errors must also be sanitized; credentials and internal details must not appear in responses. Document the common format alongside the endpoint contract.
 
-Use an injectable Tavily adapter over its Search HTTP API, with `TAVILY_API_KEY` kept server-side and a fixed query configurable through an environment variable with a code default. Request publication dates and use provider-supported date controls for a recent search; if fewer than ten eligible unique results remain, make one bounded complementary search that can include older publications. Normalize results, discard missing or invalid publication dates, deduplicate by original URL, sort newest first, and take ten. A failed complementary search fails the whole refresh so a partial result does not replace a previously successful selection.
+### Single search and selection
 
-The [Tavily Search API reference](https://docs.tavily.com/documentation/api-reference/endpoint/search) documents publication-date and date-range options as well as language controls. Verify their actual behavior, date availability, relevance, and Spanish/English coverage with a real query during implementation; do not infer missing dates or promise language coverage. A finite two-stage search limits cost and avoids indefinite attempts to fill the list. An LLM or independent verification is outside scope.
+Keep the injectable Tavily Search adapter and server-side `TAVILY_API_KEY`. `OPENSPEC_NEWS_QUERY` overrides the exact English default `Companies adopting OpenSpec for spec-driven development: case studies and engineering team experiences`, without mixed-language wording or the publisher name. Send `topic: "news"`, `search_depth: "advanced"`, numeric `max_results: 10`, `include_images: true` and `exclude_domains: ["reddit.com"]`. Retain `time_range: "month"`, `include_published_date: true` and `filter_by_published_date: true`. The provider result limit is ten before local filtering, not a pool of twenty. Request dates and a recent period using the provider's controls, then enforce eligibility in the backend rather than trusting the provider filter alone. For each newly selected result, exclude unusable dates, dates older than the preceding 30 days and future dates relative to the search time. This selection rule does not remove publications from an existing cache as they age. Sort eligible publications newest first and take at most ten.
 
-### Cache and concurrency
+Only a usable in-period date is mandatory. Missing title, link, excerpt or thumbnail becomes an empty string instead of dropping the publication. Return supplied links literally, including invalid links; presentation and opening behavior belong to the future frontend. Deduplicate using available original links, while keeping publications without links distinct.
 
-Keep one in-memory value containing the complete selection and successful retrieval timestamp, plus one in-flight refresh promise per process. Reuse a result while its age is less than 24 hours; at expiry, the first request starts a refresh and concurrent requests await the same promise. Atomically replace the value only after all required searches succeed, including an empty result; clear the in-flight promise on success or failure. On failure, preserve the old value and timestamp and return it as stale, or return 503 if none exists. A timeout on provider calls prevents an indefinitely held refresh. Persistent or distributed caching would add infrastructure outside the MVP.
+There is no complementary search, even when fewer than ten eligible results remain. On a failed provider request, retry that same fixed request once, with a bounded timeout per attempt. A successful empty result does not trigger a retry. The whole refresh, including its single retry, is shared across concurrent visitors.
 
-### Access and configuration
+The historical exploratory check made recent and unfiltered searches and returned HTTP 200. The recent result was a repository reference; the other response contained tutorials and unrelated adoption material, with no demonstrated Spanish coverage. This evidence is recorded in the project document and does not justify promising relevance, language coverage or independently verified publication dates. The unfiltered search is historical evidence and is no longer part of the requested runtime behavior.
 
-Configure CORS for the two specified production origins and apply a configurable IP-based request limit to this endpoint, returning 429 when exceeded. Configure Express proxy trust only for the actual deployment's trusted proxies; never blindly trust forwarded headers. Select and validate the allowance and window before deployment. Keep provider errors and credentials out of client responses and redact sensitive request details from logs. CORS alone is not abuse protection, while an IP limiter does not provide a global spending cap.
+### Per-publication thumbnails
 
-### Verification
+Preserve each result's `images` metadata through the adapter. Populate `thumbnailUrl` from the first nonempty string URL in that result's image array, skipping entries without such a URL. Missing, empty or malformed image metadata yields an empty string without discarding the publication. Do not use the response's top-level query-related image list as an article thumbnail or take an image from a different result.
 
-Exercise the real HTTP boundary using the existing Nest testing module, Vitest and Supertest, with an injected fake provider and controlled time. Cover selection, empty results, cache expiry, concurrent requests, successful and failed refreshes, CORS, per-IP limits and credential redaction. Separately run an exploratory real-provider query with a configured credential; do not put it in the normal automated suite.
+The [Tavily Search reference](https://docs.tavily.com/documentation/api-reference/endpoint/search) documents per-result images when `include_images` is enabled. Return the selected URL without downloading, resizing, storing or proxying the image; frontend rendering remains outside scope. Include thumbnails in cache replacement and preserve them unchanged during stale fallback.
+
+Historical exploration used the previous query and parameters. Re-run a bounded search with the revised configuration and record relevance, dates, language coverage and per-source image availability without credentials. The revised query does not guarantee organizational adoption evidence.
+
+### Cache, stale fallback and concurrency
+
+Keep one in-memory selection per process, its original successful `fetchedAt`, a `stale` state, a separate next-refresh deadline and one in-flight promise. The next-refresh deadline must be independent of `fetchedAt`: successful news is reused for 24 hours; a failed refresh may extend the wait without claiming that the news was fetched again.
+
+On initial success or successful renewal, atomically replace the selection, record the successful retrieval time, set `stale: false` and schedule the next eligible refresh after 24 hours. This includes empty selections. Before that deadline, return the stored value without querying Tavily. At the deadline, the next request starts a shared refresh; there is no scheduled job.
+
+If the request and its retry both fail and a prior result exists, preserve every news item and the original `fetchedAt`, set `stale: true`, and postpone the next provider query for another 24 hours from that failure. All visitors within that wait receive the stored stale result. Later failures can repeat this behavior without a maximum stale age. Do not re-filter the old selection by the current date during fallback; that would change the preserved data.
+
+If no prior result exists, return the generic 503, do not cache the error and allow the next request to initiate another search with its one retry. Clear the in-flight promise on success or failure. Restarting the process loses all state. A new process therefore follows the no-cache path, even if another instance or a replaced process previously obtained news.
+
+### Access and Cloud Run client IP
+
+Allow CORS for `https://ignitoz.com` and `https://www.ignitoz.com`. These are frontend origins, not the backend URL. A disallowed origin does not receive CORS permission; CORS is not authentication and does not require rejecting direct HTTP calls.
+
+Default the per-instance fixed-window limiter to `NEWS_RATE_LIMIT=30` and `NEWS_RATE_WINDOW_MS=60000`, retaining configuration overrides. Identify the visitor IP using the actual direct Cloud Run request path, with narrowly configured Express proxy trust or equivalent trusted-header processing. Check the documented platform header contract before selecting the trust configuration; do not blindly trust client-supplied forwarded headers or assume that the current `req.ip` is the original visitor.
+
+When a reliable client IP cannot be established, serve the request without applying the IP limit. Do not group these visitors under an invented shared `unknown` IP. This exception does not bypass provider availability or other API behavior. Unit/local HTTP tests must cover trusted and untrusted header handling and the missing/unreliable-IP path. No Apigee or additional proxy is required. End-to-end verification of real IPs and rate limits in Cloud Run is separate follow-up work.
+
+### Local verification
+
+Use two complementary local suites: isolated unit tests run by `npm test`, and HTTP integration tests using Nest Testing and Supertest run by `npm run test:e2e`. Retain the existing HTTP tests for routing, module wiring, CORS and the complete endpoint workflow. Unit tests must not open HTTP servers or contact Tavily/production, and must test public operations without calling private methods or inspecting cache internals.
+
+Require dedicated unit suites for:
+
+- `NewsService`: use a fake provider and controlled clock to verify selection/date boundaries, optional fields, literal links/deduplication, count/empty results, one retry, concurrent refresh sharing, fresh/stale cache deadlines, preserved data and recovery after no-cache errors. Include first source-image selection, absent/empty/malformed image arrays, no query-level fallback and thumbnail preservation in cached/stale responses.
+- `TavilySearchService`: simulate fetch to verify the new English default and overrides, exact news/advanced/ten-result/image/Reddit-exclusion parameters, preserved source-image metadata, missing credentials, non-success HTTP responses, invalid JSON, invalid response structure, network errors, deterministic timeout cancellation and sanitized failures. Merely asserting that an abort signal exists does not verify timeout behavior.
+- `ClientIpService`: verify direct socket handling outside Cloud Run, the trusted final forwarded entry in Cloud Run, ignored untrusted prefixes, missing/invalid headers and canonical IPv4/IPv6 identities.
+- `NewsRateLimitGuard`: verify defaults/overrides, independent allowances, exact window expiry, 429 behavior, unreliable-IP bypass and rejection of zero, negative, fractional and nonnumeric limit/window configuration.
+- `ApiExceptionFilter`: verify the common response shape, preserved HTTP statuses, generic 503/500 messages and absence of internal details, credentials and stack traces.
+
+Extend the HTTP suite to verify that `thumbnailUrl` is present on every item, belongs to its own source or is empty, and survives cache reuse and stale fallback.
+
+These unit suites supplement the HTTP suite; they do not require one unit file for every delegating controller, declarative module or bootstrap entrypoint. Both suites must pass. Completion is based on the specified scenarios, not an arbitrary coverage percentage. Local proxy simulations do not establish the deployed network topology.
+
+Playwright setup, deployed-service availability/CORS tests and their deployment integration are outside this change. They may be planned separately and are not required to complete or verify this implementation.
 
 ## Risks / Trade-offs
 
-- Provider results can omit dates or be irrelevant, and language/date filtering may be imperfect → discard undated results and validate real behavior; return fewer results rather than invent data.
-- Multiple instances and restarts cause independent searches and inconsistent temporary selections → accept per-instance caching and monitor usage; there is no strict global cost cap.
-- Repeated failed refreshes can cause repeated provider calls → use bounded timeouts and monitor failures; stale data retains its original timestamp.
-- Incorrect proxy trust can collapse clients into one IP or allow spoofing → configure it for the actual deployment topology and test through that path before release.
+- Poor relevance and incomplete language/date coverage are accepted; invalid/out-of-period dates are excluded, not invented.
+- A stale selection can become arbitrarily old during repeated failures. Preserve `fetchedAt` and `stale: true` so consumers can see its real age.
+- Failed refreshes with an existing selection wait another 24 hours, which also delays recovery visibility. With no selection, later requests can repeatedly retry the provider.
+- Per-instance counters and caches do not impose a global rate or spending limit. Restarting or scaling out can cause additional searches.
+- Failing open when IP identification is unreliable favors news availability and leaves those requests without IP limiting.
+- Provider links and images may be unavailable or unusable; rendering belongs to the future frontend. Missing thumbnails do not remove eligible news.
+- With a provider maximum of ten, date filtering and deduplication can leave fewer items; no complementary search fills them.
 
 ## Migration Plan
 
-Configure the provider key, fixed query if overridden, and agreed rate-limit values; verify proxy and CORS behavior in the target environment. Deploy the backend and perform the exploratory provider check, then enable frontend consumption in a separate change. Roll back the application release if needed; the in-memory cache requires no data migration or cleanup.
+Adapt the existing implementation and tests to these artifacts, document the agreed settings and common API errors, and run build, lint and automated suites. Configure the server credential and the client-IP handling for direct Cloud Run access. Update the query default and environment example; existing `OPENSPEC_NEWS_QUERY` overrides must be updated or removed by the environment owner to use the new default. Process replacement clears cached items, so the added thumbnail field requires no persistent-state migration. Completion of this change does not require a deployed Playwright suite, a pre-release environment or deployment-trigger integration. Real IP/rate-limit deployment checks and stress tests remain separate follow-up work. This change has no data migration because all state is in memory.

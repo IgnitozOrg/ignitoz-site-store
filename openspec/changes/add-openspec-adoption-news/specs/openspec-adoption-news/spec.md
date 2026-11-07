@@ -2,78 +2,157 @@
 
 ## Purpose
 
-Provide a public, shared selection of publications about organizational adoption of Fission-AI's OpenSpec, with freshness and availability information.
+Provide a shared selection of publications about organizational adoption of OpenSpec, with explicit freshness, availability and access behavior for Ignitoz visitors.
 
 ## ADDED Requirements
 
 ### Requirement: Public fixed news query
-The system SHALL provide an unauthenticated, on-demand news endpoint using a server-configured query about organizational adoption of Fission-AI's OpenSpec, oriented toward Spanish and English publications.
+The system SHALL expose unauthenticated `GET /news/openspec-adoption` using one server-configured search oriented toward Spanish and English publications about organizational adoption of OpenSpec. Client inputs SHALL NOT alter the search or force a refresh.
 
 #### Scenario: A visitor requests news
 - **WHEN** a visitor requests the news endpoint
-- **THEN** the system returns the shared news selection without requiring authentication
+- **THEN** the system returns the selection without requiring authentication
+
+#### Scenario: No server query override is configured
+- **WHEN** the server has no query override
+- **THEN** the default query is entirely in English and targets companies adopting OpenSpec, case studies and engineering-team experiences without including the publisher name
 
 #### Scenario: A client supplies search controls
-- **WHEN** a client supplies parameters intended to change the query, period, result count, or force a refresh
+- **WHEN** a client supplies parameters intended to change the query, period, result count or refresh behavior
 - **THEN** those parameters do not alter the server's search or force a refresh
 
-### Requirement: Publication fields and dates
-The system SHALL return each eligible publication's title, original link, excerpt, and usable publication date supplied by the search provider.
+### Requirement: Publication response fields
+Each returned publication SHALL contain `title`, `url`, `excerpt`, `publishedAt` and `thumbnailUrl`. Missing non-date fields SHALL be returned as empty strings. Supplied links SHALL be preserved as received, and missing non-date fields SHALL NOT make a publication ineligible.
+
+#### Scenario: A publication has missing fields
+- **WHEN** a publication has an eligible date but lacks a title, link or excerpt
+- **THEN** it remains eligible and its missing fields are empty strings
+
+#### Scenario: The provider supplies an invalid link
+- **WHEN** an eligible publication includes an invalid link
+- **THEN** the response preserves that link rather than dropping the publication or replacing the supplied value
+
+### Requirement: Publication date eligibility
+When selecting a new result, the system SHALL include only publications with usable provider-supplied dates within the preceding 30 days and not later than the query time. The system SHALL NOT invent missing dates or substitute retrieval timestamps for publication dates.
 
 #### Scenario: A publication has no usable date
-- **WHEN** a search result has no usable provider-supplied publication date
-- **THEN** it is excluded rather than assigned an invented date or the retrieval date
+- **WHEN** a search result has a missing or unusable publication date
+- **THEN** it is excluded from the new selection
 
-### Requirement: Recent and older publication selection
-The system SHALL prioritize publications from the last 30 days, seek older publications if needed, and return at most ten eligible publications in descending publication-date order.
+#### Scenario: The provider returns an old publication
+- **WHEN** a result is older than the preceding 30 days despite the requested period
+- **THEN** it is excluded from the new selection
 
-#### Scenario: Recent publications fill the selection
-- **WHEN** at least ten eligible recent publications are available
-- **THEN** the response contains at most ten publications ordered newest first
+#### Scenario: The provider returns a future publication
+- **WHEN** a result has a publication date later than the query time
+- **THEN** it is excluded from the new selection
 
-#### Scenario: Recent publications do not fill the selection
-- **WHEN** fewer than ten eligible recent publications are available
-- **THEN** the system also searches for older publications and returns available eligible results, newest first, up to ten
+### Requirement: Single-search selection
+The system SHALL select at most ten eligible publications from a single successful search, ordered newest first. It SHALL NOT perform a complementary search to fill the list. Duplicate available original links SHALL identify duplicate publications; publications without links SHALL remain distinct.
 
-#### Scenario: Fewer than ten eligible publications exist
-- **WHEN** the searches yield fewer than ten eligible publications
-- **THEN** the response contains only those available without an indefinite search for more
+#### Scenario: More than ten eligible publications are returned
+- **WHEN** the provider returns more than ten eligible publications
+- **THEN** the response contains the ten newest eligible publications
+
+#### Scenario: Fewer than ten publications are available
+- **WHEN** the successful search yields fewer than ten eligible publications
+- **THEN** the system returns the available selection without performing a complementary search
+
+#### Scenario: Publications share an available link
+- **WHEN** eligible results have the same available original link
+- **THEN** the selection contains at most one publication for that link
+
+#### Scenario: Publications have no links
+- **WHEN** several eligible results have no link
+- **THEN** they are not treated as duplicates merely because their links are empty
 
 ### Requirement: Successful empty results
-The system SHALL return a successful response with an empty list when the search succeeds but finds no eligible publications.
+The system SHALL return a successful response with `items: []` when the search succeeds but no publications are eligible. Empty success SHALL be cached like a nonempty successful selection.
 
 #### Scenario: No eligible publications are found
-- **WHEN** the provider searches succeed and no eligible publications are found
-- **THEN** the response contains an empty list and is distinguishable from a provider error
+- **WHEN** the search succeeds and finds no eligible publications
+- **THEN** the response is an empty success and subsequent requests reuse it during the cache period
 
-### Requirement: Shared result freshness
-The system SHALL reuse the last successful result for 24 hours from its retrieval time for all visitors served by the same instance, and include its retrieval timestamp and freshness status in responses.
+### Requirement: Successful result freshness
+The system SHALL include `items`, `fetchedAt` and `stale` in the response, with ISO 8601 publication and retrieval timestamps. A successful selection SHALL be shared for 24 hours by visitors served by the same instance, with `stale: false` and an unchanged `fetchedAt` during that period.
 
-#### Scenario: Result is still fresh
+#### Scenario: A successful selection is still fresh
 - **WHEN** another visitor requests news within 24 hours of a successful retrieval on the same instance
 - **THEN** the same selection and retrieval timestamp are returned as fresh without another provider search
 
-#### Scenario: Result expires
-- **WHEN** a request arrives after the cached result expires
-- **THEN** it triggers a new search and a successful response carries the new retrieval timestamp
+#### Scenario: A successful selection expires
+- **WHEN** a request arrives after the successful selection's 24-hour reuse period
+- **THEN** it triggers a search, and success replaces the selection and retrieval timestamp with `stale: false`
+
+### Requirement: Instance-local cache lifecycle
+The system SHALL share successful selections only within the instance holding them. Cached data SHALL NOT be required to survive a process restart or be shared across instances. A replacement instance without a successful result SHALL follow the no-cache behavior.
+
+#### Scenario: The instance restarts
+- **WHEN** a request reaches a replacement instance that has no cached successful result
+- **THEN** it initiates retrieval and uses the no-cache error behavior if both attempts fail
+
+### Requirement: One provider retry
+If a provider request fails, the system SHALL retry the same fixed request exactly once. A successful request, including one returning no eligible publications, SHALL NOT trigger a retry. Failure of both attempts SHALL use the fallback or error behavior defined below.
+
+#### Scenario: The first request succeeds
+- **WHEN** the initial provider request succeeds, including an empty selection
+- **THEN** no retry or complementary search is performed
+
+#### Scenario: The retry succeeds
+- **WHEN** the first provider request fails and its retry succeeds
+- **THEN** the successful result is returned and cached without another provider request
+
+#### Scenario: Both attempts fail
+- **WHEN** a provider request and its single retry fail
+- **THEN** the system makes no further attempt in that refresh operation
 
 ### Requirement: Concurrent refresh sharing
-The system SHALL share one refresh operation among concurrent requests to the same instance, including any complementary search for older publications.
+The system SHALL share one refresh operation, including its single retry when required, among concurrent requests to the same instance.
 
 #### Scenario: Concurrent requests require a refresh
-- **WHEN** multiple requests arrive while the initial search or an expired-result refresh is in progress
-- **THEN** they share that operation rather than initiating duplicate refreshes
+- **WHEN** multiple requests arrive during an initial search or an expired-result refresh
+- **THEN** they share that search and any retry rather than initiating duplicate refreshes
 
-### Requirement: Provider failure fallback
-The system SHALL return the last successful result marked stale when a provider search fails and a previous result exists; otherwise it SHALL return a clear error.
+### Requirement: Stale fallback and renewed wait
+If both attempts fail and a previous successful result exists, the system SHALL preserve all its publication data and original `fetchedAt`, return it with `stale: true`, and wait another 24 hours before a later request may query the provider. Repeated failures SHALL retain the same behavior without a maximum stale age.
 
-#### Scenario: Failure with a previous result
-- **WHEN** a refresh fails after a successful retrieval
-- **THEN** the previous selection is returned as stale with its original retrieval timestamp
+#### Scenario: A refresh fails with previous data
+- **WHEN** a refresh and its retry fail after a prior successful retrieval
+- **THEN** the previous selection is returned as stale with its original retrieval timestamp, even if its publications have since aged beyond 30 days
 
-#### Scenario: Failure without a previous result
-- **WHEN** the provider fails before any successful retrieval
-- **THEN** the response is an error rather than an empty success or fabricated news
+#### Scenario: A visitor arrives during the renewed wait
+- **WHEN** a request arrives within 24 hours after the failed refresh
+- **THEN** it receives the same stale selection and timestamp without another provider search
+
+#### Scenario: The renewed wait expires
+- **WHEN** a request arrives after the renewed 24-hour wait
+- **THEN** it triggers a new search with one retry if needed, and a further failure preserves the prior data and starts another 24-hour wait
+
+### Requirement: Unavailable news without cached data
+If both provider attempts fail and no previous successful result exists, the system SHALL return HTTP 503 with a generic public service-unavailable message. It SHALL NOT cache the error; the next request SHALL be allowed to start a new search with one retry if needed.
+
+#### Scenario: Initial retrieval fails
+- **WHEN** the initial provider request and its retry fail without a prior result
+- **THEN** the endpoint returns a generic 503 rather than an empty success or fabricated news
+
+#### Scenario: A new visitor arrives after a no-cache failure
+- **WHEN** a request arrives after a failed no-cache retrieval has completed
+- **THEN** it initiates a new provider search rather than reusing the prior error
+
+### Requirement: Common public API errors
+All API endpoints SHALL use a common JSON error format containing `statusCode` and a public `message`. Public errors SHALL NOT disclose credentials or internal implementation details. Unavailable-news responses SHALL NOT reveal whether their cause is provider failure or exhausted quota.
+
+#### Scenario: Provider failure or quota exhaustion occurs
+- **WHEN** news cannot be obtained after both attempts and no cached result exists
+- **THEN** the API returns the same generic 503 format without exposing the provider, quota state or credentials
+
+#### Scenario: An API error occurs outside the news route
+- **WHEN** another API endpoint returns an error
+- **THEN** the response uses the same JSON error structure and does not disclose internal details
+
+#### Scenario: An unexpected server error occurs
+- **WHEN** an API request fails with an unexpected internal error
+- **THEN** its server-error response uses the common format with a generic public message and exposes no internal error text or credentials
 
 ### Requirement: Provider credential confidentiality
 The system MUST keep the Tavily credential on the server and MUST NOT expose it in successful or error responses.
@@ -83,15 +162,30 @@ The system MUST keep the Tavily credential on the server and MUST NOT expose it 
 - **THEN** the response does not contain the Tavily API key
 
 ### Requirement: Per-IP request limits
-The system SHALL enforce a configurable request allowance and time window per client IP and return HTTP 429 when that allowance is exceeded.
+The system SHALL enforce a configurable per-instance allowance and window for reliably identified client IPs, defaulting to 30 requests per minute, and return HTTP 429 using the common API error format when the allowance is exceeded.
 
 #### Scenario: One IP exceeds its allowance
-- **WHEN** a client IP exceeds the configured allowance within its window
-- **THEN** its excess request receives HTTP 429
+- **WHEN** a reliably identified client IP exceeds the configured allowance within its window
+- **THEN** its excess request receives HTTP 429 in the common error format
 
 #### Scenario: Another IP makes a request
-- **WHEN** one IP exhausts its allowance and another IP makes a request
+- **WHEN** one IP exhausts its allowance and another reliably identified IP makes a request
 - **THEN** the second IP is evaluated against its own allowance
+
+#### Scenario: The window expires
+- **WHEN** a client's rate-limit window expires
+- **THEN** later requests are evaluated against a renewed allowance
+
+### Requirement: Unreliable client IP availability
+The system SHALL identify the visitor IP from trusted request information for direct access to the deployed service. If a reliable client IP cannot be established, it SHALL continue normal news handling without applying an IP limit to that request or assigning an invented shared identity.
+
+#### Scenario: Client IP cannot be established reliably
+- **WHEN** a request has no reliably identifiable visitor IP
+- **THEN** the system serves available news without rejecting it or consuming an allowance under a shared unknown IP
+
+#### Scenario: A client supplies untrusted forwarded information
+- **WHEN** a client supplies forwarded-IP values that are not trusted by the deployed request path
+- **THEN** those values do not establish the identity used for the per-IP limit
 
 ### Requirement: Production browser origins
 The system SHALL allow browser cross-origin access from `https://ignitoz.com` and `https://www.ignitoz.com` without granting that access to unrelated origins.
@@ -100,6 +194,69 @@ The system SHALL allow browser cross-origin access from `https://ignitoz.com` an
 - **WHEN** a browser request originates from either allowed production origin
 - **THEN** the response permits that origin through CORS
 
+#### Scenario: An allowed origin sends a preflight
+- **WHEN** an allowed origin sends a browser preflight for the news request
+- **THEN** the response grants the required CORS permission
+
 #### Scenario: An unrelated origin requests news
 - **WHEN** a browser request originates from an unrelated origin
-- **THEN** the response does not grant that origin CORS access
+- **THEN** the response does not grant that origin CORS access, without implying that direct HTTP calls must be rejected
+
+
+### Requirement: Isolated unit verification
+The change SHALL provide automated unit tests for news behavior, provider failures, client-IP identification, rate limits and public error formatting, in addition to HTTP integration tests. Unit tests SHALL use controlled dependencies and time without opening HTTP servers or calling real external services, and SHALL verify public behavior rather than private implementation details.
+
+#### Scenario: News behavior is verified in isolation
+- **WHEN** the news unit suite exercises successful, empty, invalid-date, retry, concurrent, fresh-cache, stale-cache and no-cache paths
+- **THEN** it verifies the specified outputs and provider call counts, including optional fields, links, deduplication, data preservation and recovery
+
+#### Scenario: Provider failure handling is verified in isolation
+- **WHEN** the provider unit suite exercises missing credentials, default/configured queries, non-success HTTP responses, invalid JSON/response structure, network failure and timeout cancellation
+- **THEN** it verifies configured requests and sanitized failure behavior without real provider calls, including cancellation rather than only the presence of a timeout signal
+
+#### Scenario: Client identity is verified in isolation
+- **WHEN** the client-IP unit suite receives direct, trusted-forwarded, untrusted-prefix, missing/invalid-header and equivalent-address cases
+- **THEN** it verifies the trusted identity or unavailable-identity result and address normalization without an HTTP server
+
+#### Scenario: Rate-limit configuration and behavior are verified in isolation
+- **WHEN** the limiter unit suite exercises defaults, overrides, separate IPs, exact window boundaries, unreliable IPs and invalid limit/window values
+- **THEN** it verifies the allowance and 429 behavior, bypass for unreliable IPs and rejection of zero, negative, fractional and nonnumeric configuration
+
+#### Scenario: Public errors are verified in isolation
+- **WHEN** the error-formatting unit suite exercises known HTTP errors, unavailable service and unexpected internal failures
+- **THEN** it verifies the common JSON shape, preserved statuses, generic public messages and absence of credentials, internal details and stack traces
+
+
+### Requirement: News retrieval constraints
+The system SHALL retrieve news using advanced search depth, requesting at most ten provider results and source-related images while excluding `reddit.com` through the provider filter. Retrieval SHALL target the recent publication period and supplied publication dates, with local date eligibility enforced independently.
+
+#### Scenario: News retrieval is requested
+- **WHEN** a refresh or its retry requests publications
+- **THEN** the search targets news with advanced depth, requests at most ten results and associated images, and excludes Reddit
+
+#### Scenario: Publication-date controls remain active
+- **WHEN** publications are requested from the provider
+- **THEN** the search targets the recent period with publication dates requested and local date eligibility remains enforced
+
+#### Scenario: Filtering leaves fewer results
+- **WHEN** the provider returns at most ten results and local eligibility or deduplication removes some
+- **THEN** the response contains only the remaining selection without a complementary search
+
+### Requirement: Source-related thumbnail URLs
+Each publication SHALL expose `thumbnailUrl` as the first nonempty image URL available in that publication's image list, or an empty string when unavailable. Missing or malformed image metadata SHALL NOT exclude an otherwise eligible publication. Images from query-level lists or other publications SHALL NOT be assigned as its thumbnail.
+
+#### Scenario: A publication has source images
+- **WHEN** an eligible publication has several image entries, including entries without nonempty URL strings
+- **THEN** its thumbnail is the first nonempty URL string in that publication's image list
+
+#### Scenario: A publication has no available image URL
+- **WHEN** image metadata is missing, empty or malformed, or no image entry contains a nonempty URL string
+- **THEN** the publication remains in the selection with `thumbnailUrl: ""`
+
+#### Scenario: Only query-level images are available
+- **WHEN** query-level images exist but a publication has no source-related image URL
+- **THEN** its `thumbnailUrl` is empty instead of assigning an unrelated image
+
+#### Scenario: Cached thumbnails are returned
+- **WHEN** cached news is reused or returned as stale after a failed refresh
+- **THEN** each thumbnail remains associated with its original publication and is preserved with the rest of the cached data
