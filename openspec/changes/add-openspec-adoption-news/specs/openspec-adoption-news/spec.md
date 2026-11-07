@@ -7,15 +7,19 @@ Provide a shared selection of publications about organizational adoption of Open
 ## ADDED Requirements
 
 ### Requirement: Public fixed news query
-The system SHALL expose unauthenticated `GET /news/openspec-adoption` using one server-configured search oriented toward Spanish and English publications about organizational adoption of OpenSpec. Client inputs SHALL NOT alter the search or force a refresh.
+The system SHALL expose unauthenticated `GET /news/openspec-adoption` using one server-configured search for OpenSpec publications. The system SHALL use a nonempty configured query unchanged and otherwise fall back to exactly `"openspec"`. Client inputs SHALL NOT alter the search or force a refresh.
 
 #### Scenario: A visitor requests news
 - **WHEN** a visitor requests the news endpoint
 - **THEN** the system returns the selection without requiring authentication
 
-#### Scenario: No server query override is configured
-- **WHEN** the server has no query override
-- **THEN** the default query is entirely in English and targets companies adopting OpenSpec, case studies and engineering-team experiences without including the publisher name
+#### Scenario: A server query is configured
+- **WHEN** the configured query is `"Companies sharing their experience adopting OpenSpec in production"`
+- **THEN** the search uses that exact phrase unchanged, rather than the `"openspec"` fallback
+
+#### Scenario: The server query is absent or empty
+- **WHEN** the server query is absent or an empty string
+- **THEN** the search uses exactly `"openspec"` without adding another default phrase
 
 #### Scenario: A client supplies search controls
 - **WHEN** a client supplies parameters intended to change the query, period, result count or refresh behavior
@@ -33,15 +37,19 @@ Each returned publication SHALL contain `title`, `url`, `excerpt`, `publishedAt`
 - **THEN** the response preserves that link rather than dropping the publication or replacing the supplied value
 
 ### Requirement: Publication date eligibility
-When selecting a new result, the system SHALL include only publications with usable provider-supplied dates within the preceding 30 days and not later than the query time. The system SHALL NOT invent missing dates or substitute retrieval timestamps for publication dates.
+When selecting a new result, the system SHALL include only publications with usable provider-supplied dates within the preceding seven days and not later than the query time. The system SHALL NOT invent missing dates or substitute retrieval timestamps for publication dates.
 
 #### Scenario: A publication has no usable date
 - **WHEN** a search result has a missing or unusable publication date
 - **THEN** it is excluded from the new selection
 
 #### Scenario: The provider returns an old publication
-- **WHEN** a result is older than the preceding 30 days despite the requested period
+- **WHEN** a result is older than the preceding seven days despite the requested period
 - **THEN** it is excluded from the new selection
+
+#### Scenario: Publication dates meet the weekly boundaries
+- **WHEN** publication dates equal the query time or exactly seven times 24 hours before it
+- **THEN** both are eligible, while dates just outside that inclusive interval are excluded
 
 #### Scenario: The provider returns a future publication
 - **WHEN** a result has a publication date later than the query time
@@ -118,7 +126,7 @@ If both attempts fail and a previous successful result exists, the system SHALL 
 
 #### Scenario: A refresh fails with previous data
 - **WHEN** a refresh and its retry fail after a prior successful retrieval
-- **THEN** the previous selection is returned as stale with its original retrieval timestamp, even if its publications have since aged beyond 30 days
+- **THEN** the previous selection is returned as stale with its original retrieval timestamp, even if its publications have since aged beyond seven days
 
 #### Scenario: A visitor arrives during the renewed wait
 - **WHEN** a request arrives within 24 hours after the failed refresh
@@ -228,15 +236,15 @@ The change SHALL provide automated unit tests for news behavior, provider failur
 
 
 ### Requirement: News retrieval constraints
-The system SHALL retrieve news using advanced search depth, requesting at most ten provider results and source-related images while excluding `reddit.com` through the provider filter. Retrieval SHALL target the recent publication period and supplied publication dates, with local date eligibility enforced independently.
+The system SHALL retrieve news using advanced search depth, requesting at most ten provider results and source-related images while excluding `reddit.com`, `github.com`, `instagram.com`, `youtube.com`, `facebook.com`, `udemy.com`, `coursera.org`, `platzi.com`, `edx.org`, `codely.com`, `tavily.com`, `pi.dev`, `signadot.com`, `alagesanpalani.com` and `github.io` through the provider filter. Retrieval SHALL target the preceding week and request publication dates, with local eligibility checks.
 
 #### Scenario: News retrieval is requested
 - **WHEN** a refresh or its retry requests publications
-- **THEN** the search targets news with advanced depth, requests at most ten results and associated images, and excludes Reddit
+- **THEN** the search targets news with advanced depth, requests at most ten results and associated images, and applies the full 15-domain exclusion list specified above
 
 #### Scenario: Publication-date controls remain active
 - **WHEN** publications are requested from the provider
-- **THEN** the search targets the recent period with publication dates requested and local date eligibility remains enforced
+- **THEN** the search targets the preceding week with publication dates requested and local date eligibility remains enforced
 
 #### Scenario: Filtering leaves fewer results
 - **WHEN** the provider returns at most ten results and local eligibility or deduplication removes some

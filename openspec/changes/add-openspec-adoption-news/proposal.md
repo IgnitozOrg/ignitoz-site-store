@@ -6,8 +6,8 @@ Ignitoz visitors need a simple way to discover articles about companies adopting
 
 ## What Changes
 
-- Provide a public, shared selection of recent OpenSpec adoption articles, with summaries, publication dates, original links and source-related thumbnails when available.
-- Refine discovery toward company adoption experiences and news, excluding unwanted sources and avoiding searches performed only to fill the list.
+- Provide a public, shared selection of OpenSpec adoption articles from the preceding week, with summaries, publication dates, original links and source-related thumbnails when available.
+- Focus discovery on company engineering teams reporting OpenSpec adoption case studies, keep it configurable by the service owner, exclude the agreed unwanted sources, and avoid searches performed only to fill the list.
 - Reuse available results and clearly indicate freshness, preserving earlier information during temporary failures.
 - Limit excessive use while allowing access from the confirmed Ignitoz website origins.
 - Provide consistent public errors that protect credentials and internal details.

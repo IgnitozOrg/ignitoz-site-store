@@ -5,13 +5,13 @@ Completed items below retain work already delivered and still valid. Changed beh
 ## 1. Provider integration and selection
 
 - [x] 1.1 Add server-side Tavily credential and fixed-query configuration, with an injectable Search adapter and bounded timeout; verify provider requests and failures using deterministic mocks without exposing the key.
-- [x] 1.2 Replace the complementary-search flow with one recent search and enforce the preceding 30-day range locally, excluding missing, invalid and future dates; verify ordering, the ten-item cap, fewer results, empty results and absence of complementary calls through controlled-time HTTP tests.
-- [x] 1.3 Perform and document an exploratory Tavily search using a configured credential; record actual relevance, publication dates, Spanish/English coverage and period-filter behavior without recording the credential.
+- [x] 1.2 Enforce the rolling preceding seven-day range locally with one search and no complementary search; update NewsService unit and local HTTP tests for both inclusive boundaries, just-outside dates, missing/invalid/future dates, ordering, fewer/empty results and ten eligible results within one week.
+- [x] 1.3 Perform and document the initial historical exploratory Tavily search using a configured credential; record actual relevance, publication dates, Spanish/English coverage and period-filter behavior without recording the credential.
 - [x] 1.4 Preserve eligible publications with missing non-date fields, return missing fields empty, preserve supplied links and keep linkless items distinct; verify all optional-field and deduplication cases through HTTP tests and document the selection contract.
 
-- [ ] 1.5 Update the provider payload to news/advanced/numeric ten results/images enabled/Reddit excluded and replace the default query with the agreed English phrase; extend adapter unit tests for the exact parameters, default/override behavior and preserved source-image metadata.
-- [ ] 1.6 Add `thumbnailUrl` to news items using the first nonempty URL from their own image list, or empty when unavailable; add NewsService unit and HTTP tests for multiple/missing/empty/malformed image entries, no query-level or cross-publication fallback, and cached/stale thumbnail preservation.
-- [ ] 1.7 Run and document a bounded exploratory Tavily search with the revised query and parameters; record relevance, publication dates, language coverage and source-image availability without credentials, distinguishing it from the historical experiment.
+- [x] 1.5 Configure OPENSPEC_NEWS_QUERY as "Companies sharing their experience adopting OpenSpec in production" with "openspec" as the absent/empty fallback and send the 15 domains listed in the design as exclusions; verify the exact configured query, both fallback cases, full payload including news/advanced/week/ten/images, all exclusions and source images using adapter unit tests.
+- [x] 1.6 Add `thumbnailUrl` to news items using the first nonempty URL from their own image list, or empty when unavailable; add NewsService unit and HTTP tests for multiple/missing/empty/malformed image entries, no query-level or cross-publication fallback, and cached/stale thumbnail preservation.
+- [x] 1.7 Run and document a bounded exploratory Tavily search using the newly configured query and all 15 excluded domains; record effective query, dates, relevance, language coverage and source images without credentials, distinguishing it from earlier experiments.
 
 ## 2. News endpoint and availability
 
@@ -19,7 +19,7 @@ Completed items below retain work already delivered and still valid. Changed beh
 - [x] 2.2 Implement the per-instance 24-hour successful-result cache and atomic refresh; verify normal reuse, expiry, successful renewal and caching of empty results through HTTP tests.
 - [x] 2.3 Share the in-flight refresh across concurrent requests; verify initial and expired-cache requests reuse the same pending operation.
 - [x] 2.4 Retry a failed Tavily request exactly once within the shared refresh; verify first-attempt success, retry success, both-attempt failure, no retry for empty success and concurrent requests sharing both attempts.
-- [x] 2.5 Separate the next-refresh deadline from the successful retrieval timestamp and wait another 24 hours after both attempts fail with previous data; verify preserved items and `fetchedAt` even as publications age beyond 30 days, persistent `stale: true`, no searches during that wait, renewed attempts afterward and later recovery, and document this behavior.
+- [x] 2.5 Retain the separate refresh deadline and 24-hour stale wait; adapt unit and local HTTP fixtures to start within the seven-day eligibility interval and verify all data, thumbnails and original fetchedAt survive aging beyond seven days, repeated failed refreshes and later recovery without re-filtering cached news.
 - [x] 2.6 Ensure both-attempt failures without previous data return an error without caching it and release the in-flight operation; verify a later request starts a new search, a replacement instance follows the same no-cache path and successful recovery is cached.
 
 ## 3. Access and operational configuration
@@ -29,7 +29,7 @@ Completed items below retain work already delivered and still valid. Changed beh
 - [x] 3.3 Adapt trusted client-IP identification for direct Cloud Run access and bypass IP limiting when the IP is unreliable; verify trusted/untrusted forwarded information and no shared unknown identity through local HTTP tests, and document the trust assumptions and per-instance limitation.
 - [x] 3.4 Update API and environment documentation for the revised search, cache behavior, literal links, IP fallback, current backend URL and agreed rate settings; verify the documented configuration matches the implementation and contains no secrets.
 
-- [ ] 3.5 Update the API contract, README and environment example for the new query, exact provider parameters and thumbnail mapping/fallback; verify documentation matches the implementation and explains how existing query overrides affect rollout.
+- [x] 3.5 Update README and the uncommented environment example for the new configured query, "openspec" fallback and full 15-domain exclusion list; verify the documented provider payload, existing environment override precedence and weekly selection match the implementation.
 
 ## 4. Common API errors
 
@@ -45,7 +45,7 @@ Completed items below retain work already delivered and still valid. Changed beh
 
 ## 6. Integration verification
 
-- [ ] 6.1 Run build, lint, unit and local HTTP suites after the provider-query and thumbnail updates; confirm both test commands pass, the existing greeting endpoint works and the revised news/thumbnail contract is covered.
+- [x] 6.1 Run build, lint, unit and local HTTP suites after the updated query and domain exclusions; verify the exact request configuration and existing weekly news and greeting behavior.
 
 ## Workflow follow-up
 
