@@ -3,10 +3,10 @@
 ## MODIFIED Requirements
 
 ### Requirement: Public fixed news query
-The system SHALL expose unauthenticated `GET /news/openspec-adoption` with one server-configured OpenSpec search. A result SHALL NOT imply confirmed organizational adoption. A nonempty configured query SHALL be used as the base query; absent or empty configuration SHALL fall back to `openspec`. The system SHALL append ` -site:github.com` to the base query. Client inputs SHALL NOT alter the search or force a refresh.
+The system SHALL expose unauthenticated `GET /news?topic=openspec`. The `topic` query parameter SHALL be required and SHALL contain exactly one case-sensitive identifier registered in the backend. Initially only `openspec` SHALL be enabled. Missing, empty, repeated, non-string or disabled topic values SHALL return HTTP 400 using the common public error format without calling the provider or serving cached news. The backend SHALL map each enabled topic to a server-owned search query; client input SHALL NOT enable topics or supply provider queries. The former `/news/openspec-adoption` route SHALL return HTTP 404. A result SHALL NOT imply confirmed organizational adoption. For `openspec`, a nonempty `OPENSPEC_NEWS_QUERY` SHALL be used as the base query; absent or empty configuration SHALL fall back to `openspec`. The system SHALL append ` -site:github.com` to the base query. Client `query`, `period`, `count` or `refresh` inputs SHALL NOT alter the configured query or force a refresh.
 
 #### Scenario: A visitor requests news
-- **WHEN** a visitor requests the news endpoint
+- **WHEN** a visitor requests the news endpoint with an enabled topic
 - **THEN** the system returns the results without requiring authentication
 
 #### Scenario: A server query is configured
@@ -18,8 +18,28 @@ The system SHALL expose unauthenticated `GET /news/openspec-adoption` with one s
 - **THEN** the provider receives `openspec -site:github.com`
 
 #### Scenario: A client supplies search controls
-- **WHEN** a client supplies query, period, count or refresh controls
+- **WHEN** a client supplies query, period, count or refresh controls along with a valid topic
 - **THEN** the server search and cache are unaffected
+
+#### Scenario: The topic is missing or empty
+- **WHEN** the request omits `topic` or supplies an empty value
+- **THEN** the endpoint returns a generic 400 without a provider call
+
+#### Scenario: The topic is disabled
+- **WHEN** the request supplies a topic not registered in the backend
+- **THEN** the endpoint returns a generic 400 even if another topic has cached news
+
+#### Scenario: The topic is repeated or malformed
+- **WHEN** the request supplies multiple topic values or a non-string value
+- **THEN** the endpoint returns a generic 400 without a provider call
+
+#### Scenario: An enabled topic is selected
+- **WHEN** the request supplies exactly one registered topic identifier
+- **THEN** the backend uses that topic's server-owned query and cache
+
+#### Scenario: The former route is requested
+- **WHEN** a client requests `/news/openspec-adoption`
+- **THEN** the API returns HTTP 404
 
 ### Requirement: Publication response fields
 The `items` array SHALL contain objects with string fields `title`, `url`, `excerpt`, `publishedAt`, and `thumbnailUrl`. Map provider `title`, `link`, `snippet`, and `thumbnail` to the corresponding public fields; use empty strings for missing or non-string text fields.
@@ -126,10 +146,10 @@ The system SHALL return and cache a successful `items: []` when `organic_results
 - **THEN** an empty success is cached without a retry
 
 ### Requirement: Successful result freshness
-The response SHALL contain `items`, ISO 8601 `fetchedAt` and `stale`. Publication dates SHALL be expressed as ISO 8601 timestamps. Successful results SHALL be shared for 24 hours per instance with `stale: false` and an unchanged `fetchedAt`.
+The response SHALL contain `items`, ISO 8601 `fetchedAt` and `stale`. Publication dates SHALL be expressed as ISO 8601 timestamps. Successful results SHALL be shared for 24 hours per topic per instance with `stale: false` and an unchanged `fetchedAt`.
 
 #### Scenario: A successful result is fresh
-- **WHEN** another visitor requests news within 24 hours of a successful retrieval on the same instance
+- **WHEN** another visitor requests news for the same topic within 24 hours of a successful retrieval on the same instance
 - **THEN** the same results and retrieval timestamp are returned without another provider search
 
 #### Scenario: A successful result expires
@@ -227,3 +247,74 @@ The change SHALL provide isolated unit and HTTP tests for provider requests, nor
 #### Scenario: Public errors are verified in isolation
 - **WHEN** unit tests exercise public error formatting
 - **THEN** they verify generic errors without exposing credentials
+
+### Requirement: Instance-local cache lifecycle
+The system SHALL share successful selections only within the instance holding them. Each enabled topic SHALL have independent cached data, freshness deadlines, and pending refresh state. Cached data SHALL NOT be required to survive a process restart or be shared across instances. A replacement instance without a successful result SHALL follow the no-cache behavior.
+
+#### Scenario: The instance restarts
+- **WHEN** a request reaches a replacement instance that has no cached successful result
+- **THEN** it initiates retrieval and uses the no-cache error behavior if both attempts fail
+
+#### Scenario: Enabled topics have cached news
+- **WHEN** successful results are cached for multiple enabled topics
+- **THEN** each topic reuses only its own results and timestamp
+
+
+### Requirement: One provider retry
+If a provider request fails, the system SHALL retry the same selected topic's server-owned request exactly once. A successful request, including one returning no eligible publications, SHALL NOT trigger a retry. Failure of both attempts SHALL use the fallback or error behavior defined below.
+
+#### Scenario: The first request succeeds
+- **WHEN** the initial provider request succeeds, including an empty selection
+- **THEN** no retry or complementary search is performed
+
+#### Scenario: The retry succeeds
+- **WHEN** the first provider request fails and its retry succeeds
+- **THEN** the successful result is returned and cached without another provider request
+
+#### Scenario: Both attempts fail
+- **WHEN** a provider request and its single retry fail
+- **THEN** the system makes no further attempt in that refresh operation
+
+
+### Requirement: Concurrent refresh sharing
+The system SHALL share one refresh operation, including its single retry when required, among concurrent requests for the same topic to the same instance. Requests for different enabled topics SHALL NOT share pending searches or retries.
+
+#### Scenario: Concurrent requests require a refresh
+- **WHEN** multiple requests for the same topic arrive during an initial search or an expired-result refresh
+- **THEN** they share that search and any retry rather than initiating duplicate refreshes
+
+#### Scenario: Different enabled topics refresh concurrently
+- **WHEN** requests for different enabled topics require retrieval
+- **THEN** each topic runs its own refresh and retry independently
+
+
+### Requirement: Stale fallback and renewed wait
+If both attempts fail and a previous successful result exists for the selected topic, the system SHALL preserve all its publication data and original `fetchedAt`, return it with `stale: true`, and wait another 24 hours before a later request may query the provider. Repeated failures SHALL retain the same behavior without a maximum stale age.
+
+#### Scenario: A refresh fails with previous data
+- **WHEN** a refresh and its retry fail after a prior successful retrieval
+- **THEN** the previous selection is returned as stale with its original retrieval timestamp, even if its publications have since aged beyond seven days
+
+#### Scenario: A visitor arrives during the renewed wait
+- **WHEN** a request arrives within 24 hours after the failed refresh
+- **THEN** it receives the same stale selection and timestamp without another provider search
+
+#### Scenario: The renewed wait expires
+- **WHEN** a request arrives after the renewed 24-hour wait
+- **THEN** it triggers a new search with one retry if needed, and a further failure preserves the prior data and starts another 24-hour wait
+
+
+### Requirement: Unavailable news without cached data
+If both provider attempts fail and no previous successful result exists for the selected topic, the system SHALL return HTTP 503 with a generic public service-unavailable message. It SHALL NOT cache the error; the next request SHALL be allowed to start a new search with one retry if needed.
+
+#### Scenario: Initial retrieval fails
+- **WHEN** the initial provider request and its retry fail without a prior result
+- **THEN** the endpoint returns a generic 503 rather than an empty success or fabricated news
+
+#### Scenario: A new visitor arrives after a no-cache failure
+- **WHEN** a request arrives after a failed no-cache retrieval has completed
+- **THEN** it initiates a new provider search rather than reusing the prior error
+
+#### Scenario: Only another topic has cached news
+- **WHEN** both retrieval attempts fail for a topic without cached news
+- **THEN** the API returns a generic 503 and does not substitute another topic's data
