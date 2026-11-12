@@ -12,7 +12,7 @@ Before this migration the NestJS provider called Tavily; `NewsService` owned nor
 
 ## Decisions
 
-- Expose `GET /news` with one required `topic` query value. `NewsTopicsService` owns the backend registry; initially only `openspec` is enabled and resolves to `OPENSPEC_NEWS_QUERY` or `openspec`. Reject missing, empty, repeated, non-string or disabled identifiers with a generic 400 before accessing cache or provider. Other client controls remain ignored. Remove the former `/news/openspec-adoption` route (404) and coordinate the consumer URL update before deployment.
+- Expose `GET /news` with one required `topic` query value. `NewsTopicsService` owns the backend registry; initially only `openspec` is enabled and resolves to `OPENSPEC_NEWS_QUERY` or `openspec`. Reject missing, empty, repeated, non-string or disabled identifiers with a generic 400 before accessing cache or provider. Other client controls remain ignored. The former `/news/openspec-adoption` route returns 404. Verify the public endpoint and response contract through backend unit and HTTP tests.
 - Pass the resolved server-owned query to the SerpApi adapter. Store cached response, refresh deadline and pending refresh per topic in `NewsService`. Share refreshes only within the same topic and never use another topic's results as stale fallback.
 
 - Use a SerpApi adapter with `engine=google`, `hl=en`, the configured or fallback query with `-site:github.com` appended, `tbs=qdr:m3` and the server-side credential. Encode query parameters and never log credential-bearing request URLs or request metadata. Provider organic results may be logged as a structured debug object for diagnostics; disable debug in production. Preserve the existing timeout and sanitized failure behavior.
@@ -30,7 +30,4 @@ Before this migration the NestJS provider called Tavily; `NewsService` owned nor
 ## Migration Plan
 
 1. Configure `SERPAPI_API_KEY` in the deployment environment and retain the existing `OPENSPEC_NEWS_QUERY` value.
-2. Update consumers to `/news?topic=openspec` and verify the retained publication fields; deploy after coordination.
-3. If rollback is needed, restore the prior application version and its Tavily credential and account for the old response contract. Instance-local caches reset on restart.
-
-Consumer check (2026-11-07): the local `ignitozorg.github.io` checkout at `31622f8` had no references to the news endpoint or `excerpt`. The deployed site and unidentified external consumers remain unverified; confirm their compatibility with the response before deployment and coordinate any separate updates.
+2. Verify `/news?topic=openspec` and the publication response contract through backend unit and HTTP tests. External consumer discovery, updates and validation are outside this change's scope.

@@ -26,4 +26,4 @@ None.
 
 ## Impact
 
-The NestJS news provider, normalization, configuration, unit and HTTP tests change. Deployment requires `SERPAPI_API_KEY` and consumers must use `/news?topic=openspec`; publication response fields remain unchanged. No article scraping or arbitrary client-controlled searches are in scope.
+The NestJS news provider, normalization, configuration, unit and HTTP tests change. Deployment requires `SERPAPI_API_KEY`. The public endpoint is `/news?topic=openspec` and publication response fields remain unchanged. External consumer discovery and validation are outside this change's scope. No article scraping or arbitrary client-controlled searches are in scope.

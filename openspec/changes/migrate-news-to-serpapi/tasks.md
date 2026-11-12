@@ -16,7 +16,6 @@
 
 - [x] 3.1 Verify cached empty and nonempty results, shared concurrent refresh, retry, stale fallback, renewal and no-cache 503 behavior using controlled time and mocked provider responses.
 - [x] 3.2 Update HTTP integration tests for SerpApi and run the relevant unit and HTTP suites, including existing access, CORS, rate-limit and error-sanitization coverage.
-- [ ] 3.3 Verify and record before deployment that identified consumers use `/news?topic=openspec` and support the retained publication fields and estimated relative publication dates, and document the new credential and rollback prerequisites; flag any external consumer needing a separate update.
 
 
 ## 4. Backend-enabled topic selection
