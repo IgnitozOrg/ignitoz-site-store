@@ -8,13 +8,13 @@
 
 ## 2. Selection and contract
 
-- [x] 2.1 Return organic results with all provider fields, including entries without dates, without local date filtering.
+- [x] 2.1 Map organic results to publication fields, convert supported absolute and relative dates to ISO 8601, and omit results without usable dates.
 - [x] 2.2 Preserve result order and duplicates from a single provider search without a complementary search.
-- [x] 2.3 Return provider-native organic results in `items`; verify the complete public response shape in unit and HTTP tests.
+- [x] 2.3 Return normalized publication results in `items`; verify the complete public response shape in unit and HTTP tests.
 
 ## 3. Availability and integration
 
 - [x] 3.1 Verify cached empty and nonempty results, shared concurrent refresh, retry, stale fallback, renewal and no-cache 503 behavior using controlled time and mocked provider responses.
 - [x] 3.2 Update HTTP integration tests for SerpApi and run the relevant unit and HTTP suites, including existing access, CORS, rate-limit and error-sanitization coverage.
-- [ ] 3.3 Verify and record before deployment that identified consumers support provider-native items instead of the previous normalized fields, and document the new credential and rollback prerequisites; flag any external consumer needing a separate update.
+- [ ] 3.3 Verify and record before deployment that identified consumers support the retained publication fields and estimated relative publication dates, and document the new credential and rollback prerequisites; flag any external consumer needing a separate update.
 
