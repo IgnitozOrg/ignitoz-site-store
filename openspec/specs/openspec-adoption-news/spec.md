@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Provide a shared selection of publications about organizational adoption of OpenSpec, with explicit freshness, availability and access behavior for Ignitoz visitors.
+Provide Ignitoz visitors with a shared selection of publications related to OpenSpec, with explicit freshness, availability and access behavior. A publication does not by itself confirm organizational adoption of OpenSpec.
 
 ## Requirements
 
