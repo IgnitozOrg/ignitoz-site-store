@@ -6,10 +6,10 @@ Replace Tavily with SerpApi for OpenSpec-related news while preserving the endpo
 
 ## What Changes
 
-- Search Google News through SerpApi in English, using the configured fixed query and server-side credential.
-- Select up to 20 recent publications, taking only the first story from each grouped result, and retain the newest result for duplicate links. Do not exclude domains or perform a complementary search.
-- Treat a provider response without news results and without an explicit error as an empty success.
-- **BREAKING**: Remove `excerpt` from each publication in `GET /news/openspec-adoption`; consumers must no longer rely on it.
+- Search Google through SerpApi in English, using the configured query with `-site:github.com` appended, a three-month provider date filter and server-side credential.
+- Return the provider’s `organic_results` unchanged and in provider order as `items`. Exclude GitHub through the query and do not perform a complementary search.
+- Treat a provider response without organic results or with Google’s explicit no-results message as an empty success.
+- **BREAKING**: Return each organic result with its provider fields instead of the previous normalized publication fields; consumers must adapt.
 - Preserve per-instance caching, concurrent refresh sharing, one retry, stale fallback and generic errors.
 
 ## Capabilities
@@ -20,8 +20,8 @@ None.
 
 ### Modified Capabilities
 
-- `openspec-adoption-news`: Provider retrieval, publication fields, selection, deduplication and empty-result behavior change; existing access and availability requirements remain.
+- `openspec-adoption-news`: Provider retrieval, publication fields and empty-result behavior change; existing access and availability requirements remain.
 
 ## Impact
 
-The NestJS news provider, normalization, configuration, unit and HTTP tests change. Deployment requires `SERPAPI_API_KEY` and coordination with consumers of `excerpt`. No article scraping or client-controlled searches are in scope.
+The NestJS news provider, normalization, configuration, unit and HTTP tests change. Deployment requires `SERPAPI_API_KEY` and coordination with consumers of the previous normalized response. No article scraping or client-controlled searches are in scope.
