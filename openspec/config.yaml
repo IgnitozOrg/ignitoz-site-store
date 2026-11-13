@@ -2,7 +2,7 @@ schema: spec-driven
 
 context: |
   Project: ignitozorg.github.io
-  Language: English
+  Write all OpenSpec artifacts in English.
   Domain: SPA landing page for Ignitoz.
   Stack: documented in docs/stack.md
   Architecture: documented in docs/architecture.md
@@ -10,21 +10,30 @@ context: |
 
 rules:
   proposal:
-    - Keep the proposal under 500 words unless the change is unusually broad.
-    - Cover only why, what changes, scope, non-goals, capabilities, and impact.
-    - Move implementation choices and file-level details to design.md.
+    - Keep proposals under 500 words unless the scope warrants more.
+    - Explain why the change is needed, its intended outcomes, scope, and relevant non-goals.
+    - Identify affected systems, public contracts, dependencies, and breaking changes when applicable.
+    - Define capabilities as cohesive, durable areas of system behavior, not technologies, architectural patterns, or implementation tasks.
+    - Review existing specs and reuse capabilities when extending their behavior.
+    - Explicitly identify added, modified, and removed capabilities.
+    - For changes without spec-level behavior changes, use skip_specs in the change metadata instead of inventing capabilities.
+    - Defer implementation decisions to design.md unless they affect scope, compatibility, or deployment.
 
   specs:
-    - Treat specs as the behavioral contract, not an implementation plan.
-    - Include only observable behavior, user outcomes, and external contracts.
-    - Exclude code structure, file paths, components, commands, and architecture decisions.
+    - Define observable behavior, user outcomes, and external contracts.
+    - Organize related requirements and testable scenarios by capability, not solely by screens, modules, or implementation phases.
+    - Cover relevant errors, edge cases, and compatibility requirements.
+    - Avoid duplicated requirements and internal implementation details.
 
   design:
-    - Keep design sections concise and decision-oriented.
-    - Include concrete files, routes, assets, dependencies, or integrations only when they clarify implementation.
-    - Do not repeat proposal motivation or spec requirements.
+    - Explain the technical approach and significant architectural decisions.
+    - Include components, dependencies, integrations, and file-level details when relevant.
+    - Document important alternatives, trade-offs, risks, and technical impacts.
+    - Avoid repeating proposal or specs content.
+    - Preserve enduring architectural decisions in permanent project documentation.
 
   tasks:
-    - Write each task as one concrete deliverable.
-    - Include validation tasks for changed behavior.
-    - Avoid restating proposal, specs, or design in task text.
+    - Define actionable deliverables with clear verification criteria.
+    - Cover implementation, testing, and validation of affected requirements.
+    - Include tasks to update permanent documentation when required by design decisions.
+    - Avoid duplicating proposal, specs, or design content.
