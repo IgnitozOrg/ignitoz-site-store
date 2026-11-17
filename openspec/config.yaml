@@ -24,6 +24,7 @@ rules:
     - Organize related requirements and testable scenarios by capability, not solely by screens, modules, or implementation phases.
     - Cover relevant errors, edge cases, and compatibility requirements.
     - Avoid duplicated requirements and internal implementation details.
+    - Each requirement body must contain exactly one normative statement using SHALL or SHALL NOT. Avoid MUST, SHOULD, and MAY; state one mandatory, observable behavior per requirement and split distinct obligations into separate requirements, each with its own scenarios.
 
   design:
     - Explain the technical approach and significant architectural decisions.
